@@ -1,6 +1,6 @@
-# AI Resume Feedback System
+# ResuMate: AI Resume Feedback System
 
-Welcome to the AI Resume Feedback System! This project allows users to receive AI-generated feedback on their resumes to help them improve and optimize their job applications.
+Welcome to ResuMate! This project allows users to receive AI-generated feedback on their resumes to help them improve and optimize their job applications.
 
 ## Project Structure
 
