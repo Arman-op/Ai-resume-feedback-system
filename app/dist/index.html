@@ -1,0 +1,1152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Resume Feedback System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { font-family: 'Inter', sans-serif; }
+        .gauge-circle { transition: stroke-dashoffset 1.5s ease-out; }
+        @keyframes pulse-ring {
+            0%, 100% { transform: scale(0.95); opacity: 0.5; }
+            50% { transform: scale(1); opacity: 1; }
+        }
+        .animate-pulse-ring { animation: pulse-ring 2s ease-in-out infinite; }
+    </style>
+</head>
+<body class="bg-slate-50">
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect, useRef, createContext, useContext } = React;
+
+        // Mock Data
+        const mockUser = {
+            id: 'user-001',
+            email: 'john.doe@example.com',
+            name: 'John Doe',
+            avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=john',
+            created_at: '2024-01-15T10:30:00Z',
+        };
+
+        const mockAnalysisResult = {
+            overall_feedback: 'Your resume demonstrates solid professional experience with measurable achievements. The formatting is clean but could benefit from more ATS-friendly section headers. Consider adding more industry-specific keywords and quantifying additional accomplishments.',
+            keyword_analysis: {
+                score: 78,
+                matched_keywords: ['Project Management', 'Agile', 'Team Leadership', 'Strategic Planning', 'Data Analysis', 'Python', 'SQL'],
+                missing_keywords: ['Stakeholder Management', 'Risk Assessment', 'Budget Oversight', 'KPI Tracking', 'Cross-functional Collaboration'],
+                suggestions: [
+                    'Add "Stakeholder Management" to your experience section',
+                    'Include "Budget Oversight" if you have managed project budgets',
+                    'Mention "KPI Tracking" in relation to performance metrics',
+                ],
+            },
+            formatting_analysis: {
+                score: 85,
+                issues: ['Inconsistent date formatting', 'Section headers use special characters'],
+                suggestions: [
+                    'Standardize date format to MM/YYYY throughout',
+                    'Replace special characters in headers with plain text',
+                    'Ensure single-column layout for better ATS parsing',
+                    'Use standard section titles: Experience, Education, Skills',
+                ],
+            },
+            impact_analysis: {
+                score: 72,
+                quantified_results: [
+                    'Increased team productivity by 25%',
+                    'Reduced project delivery time by 15%',
+                    'Managed team of 8 engineers',
+                ],
+                missing_metrics: [
+                    'Revenue impact of your projects',
+                    'Cost savings achieved',
+                    'User/customer growth metrics',
+                ],
+                suggestions: [
+                    'Add dollar amounts or percentages for budget management',
+                    'Include customer satisfaction scores if available',
+                    'Quantify the scale of systems or teams you managed',
+                ],
+            },
+            completeness_analysis: {
+                score: 90,
+                present_sections: ['Contact Information', 'Professional Summary', 'Work Experience', 'Education', 'Skills'],
+                missing_sections: ['Certifications', 'Projects', 'Publications'],
+                suggestions: [
+                    'Add a Certifications section if you have any professional certifications',
+                    'Include a Projects section to showcase specific achievements',
+                    'Consider adding Publications if applicable to your field',
+                ],
+            },
+            improvement_plan: [
+                'Week 1: Add missing keywords and standardize formatting',
+                'Week 2: Quantify 3 more achievements with metrics',
+                'Week 3: Add Certifications and Projects sections',
+                'Week 4: Review and optimize for specific job descriptions',
+            ],
+        };
+
+        const mockResumes = [
+            {
+                id: 'resume-001',
+                user_id: 'user-001',
+                filename: 'John_Doe_Resume_2024.pdf',
+                file_url: '/uploads/resume-001.pdf',
+                ats_score: 81,
+                keyword_score: 78,
+                formatting_score: 85,
+                impact_score: 72,
+                completeness_score: 90,
+                analysis_result: mockAnalysisResult,
+                created_at: '2024-01-20T14:30:00Z',
+                updated_at: '2024-01-20T14:30:00Z',
+            },
+            {
+                id: 'resume-002',
+                user_id: 'user-001',
+                filename: 'John_Doe_Resume_v2.pdf',
+                file_url: '/uploads/resume-002.pdf',
+                ats_score: 76,
+                keyword_score: 70,
+                formatting_score: 82,
+                impact_score: 68,
+                completeness_score: 85,
+                analysis_result: mockAnalysisResult,
+                created_at: '2024-01-15T10:00:00Z',
+                updated_at: '2024-01-15T10:00:00Z',
+            },
+        ];
+
+        // Utilities
+        const getScoreColor = (score) => {
+            if (score >= 80) return 'text-emerald-500';
+            if (score >= 60) return 'text-amber-500';
+            return 'text-rose-500';
+        };
+
+        const getScoreBgColor = (score) => {
+            if (score >= 80) return 'bg-emerald-500';
+            if (score >= 60) return 'bg-amber-500';
+            return 'bg-rose-500';
+        };
+
+        const getScoreLabel = (score) => {
+            if (score >= 90) return 'Excellent';
+            if (score >= 80) return 'Very Good';
+            if (score >= 70) return 'Good';
+            if (score >= 60) return 'Fair';
+            if (score >= 50) return 'Needs Improvement';
+            return 'Poor';
+        };
+
+        const formatDate = (dateString) => {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        };
+
+        // Icons Component
+        const Icon = ({ name, className = "w-5 h-5" }) => {
+            const icons = {
+                FileText: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
+                Upload: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>,
+                User: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>,
+                LogOut: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>,
+                Target: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+                Layout: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" /></svg>,
+                TrendingUp: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>,
+                CheckCircle: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+                Lightbulb: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>,
+                Check: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>,
+                X: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>,
+                Eye: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>,
+                Trash2: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>,
+                Calendar: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>,
+                Award: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" /></svg>,
+                Sparkles: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>,
+                Shield: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>,
+                Zap: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>,
+                ArrowRight: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>,
+                Lock: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>,
+                Loader2: <svg className={className + " animate-spin"} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>,
+                File: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>,
+                ChevronDown: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>,
+                History: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+                Download: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>,
+                RefreshCw: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>,
+                FileSearch: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 21h7a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v11m0 5l4.879-4.879m0 0a3 3 0 104.243-4.242 3 3 0 00-4.243 4.242z" /></svg>,
+                AlertCircle: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+            };
+            return icons[name] || null;
+        };
+
+        // Auth Context
+        const AuthContext = createContext(undefined);
+
+        function AuthProvider({ children }) {
+            const [user, setUser] = useState(null);
+            const [isLoading, setIsLoading] = useState(true);
+
+            useEffect(() => {
+                const storedUser = localStorage.getItem('resume_user');
+                if (storedUser) {
+                    setUser(JSON.parse(storedUser));
+                }
+                setIsLoading(false);
+            }, []);
+
+            const login = () => {
+                setUser(mockUser);
+                localStorage.setItem('resume_user', JSON.stringify(mockUser));
+            };
+
+            const logout = () => {
+                setUser(null);
+                localStorage.removeItem('resume_user');
+            };
+
+            const value = { user, isLoading, isAuthenticated: !!user, login, logout };
+
+            return (
+                <AuthContext.Provider value={value}>
+                    {children}
+                </AuthContext.Provider>
+            );
+        }
+
+        function useAuth() {
+            const context = useContext(AuthContext);
+            if (context === undefined) {
+                throw new Error('useAuth must be used within an AuthProvider');
+            }
+            return context;
+        }
+
+        // Resume Context
+        const ResumeContext = createContext(undefined);
+
+        function ResumeProvider({ children }) {
+            const [resumes, setResumes] = useState(mockResumes);
+            const [currentResume, setCurrentResume] = useState(null);
+            const [uploadState, setUploadState] = useState({ isUploading: false, progress: 0, error: null });
+            const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+            const uploadResume = async (file) => {
+                setUploadState({ isUploading: true, progress: 0, error: null });
+                
+                for (let i = 0; i <= 100; i += 10) {
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    setUploadState(prev => ({ ...prev, progress: i }));
+                }
+
+                const newResume = {
+                    id: `resume-${Date.now()}`,
+                    user_id: 'user-001',
+                    filename: file.name,
+                    file_url: URL.createObjectURL(file),
+                    ats_score: 0,
+                    keyword_score: 0,
+                    formatting_score: 0,
+                    impact_score: 0,
+                    completeness_score: 0,
+                    analysis_result: mockAnalysisResult,
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                };
+
+                setResumes(prev => [newResume, ...prev]);
+                setCurrentResume(newResume);
+                setUploadState({ isUploading: false, progress: 100, error: null });
+
+                // Simulate analysis
+                setIsAnalyzing(true);
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                const keywordScore = Math.floor(Math.random() * 30) + 60;
+                const formattingScore = Math.floor(Math.random() * 25) + 70;
+                const impactScore = Math.floor(Math.random() * 35) + 55;
+                const completenessScore = Math.floor(Math.random() * 20) + 75;
+                const atsScore = Math.round(keywordScore * 0.30 + formattingScore * 0.25 + impactScore * 0.25 + completenessScore * 0.20);
+
+                const analyzedResume = {
+                    ...newResume,
+                    ats_score: atsScore,
+                    keyword_score: keywordScore,
+                    formatting_score: formattingScore,
+                    impact_score: impactScore,
+                    completeness_score: completenessScore,
+                };
+
+                setResumes(prev => prev.map(r => r.id === newResume.id ? analyzedResume : r));
+                setCurrentResume(analyzedResume);
+                setIsAnalyzing(false);
+            };
+
+            const selectResume = (resume) => setCurrentResume(resume);
+
+            const deleteResume = async (resumeId) => {
+                setResumes(prev => prev.filter(r => r.id !== resumeId));
+                if (currentResume?.id === resumeId) setCurrentResume(null);
+            };
+
+            const value = { resumes, currentResume, uploadState, isAnalyzing, uploadResume, selectResume, deleteResume };
+
+            return (
+                <ResumeContext.Provider value={value}>
+                    {children}
+                </ResumeContext.Provider>
+            );
+        }
+
+        function useResume() {
+            const context = useContext(ResumeContext);
+            if (context === undefined) {
+                throw new Error('useResume must be used within a ResumeProvider');
+            }
+            return context;
+        }
+
+        // Score Gauge Component
+        function ScoreGauge({ score, size = 200, showLabel = true }) {
+            const [animatedScore, setAnimatedScore] = useState(0);
+            const radius = (size - 16) / 2;
+            const circumference = radius * 2 * Math.PI;
+            const offset = circumference - (animatedScore / 100) * circumference;
+
+            useEffect(() => {
+                const duration = 1500;
+                const startTime = performance.now();
+                
+                const animate = (currentTime) => {
+                    const elapsed = currentTime - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+                    const easeOutQuart = 1 - Math.pow(1 - progress, 4);
+                    setAnimatedScore(Math.round(score * easeOutQuart));
+                    if (progress < 1) requestAnimationFrame(animate);
+                };
+                requestAnimationFrame(animate);
+            }, [score]);
+
+            return (
+                <div className="flex flex-col items-center">
+                    <div className="relative" style={{ width: size, height: size }}>
+                        <svg width={size} height={size} className="transform -rotate-90">
+                            <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke="#e2e8f0" strokeWidth={16} />
+                            <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke="currentColor" strokeWidth={16} 
+                                strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset}
+                                className={getScoreColor(score) + " gauge-circle"} />
+                        </svg>
+                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                            <span className={`text-5xl font-bold ${getScoreColor(score)}`}>{animatedScore}</span>
+                            <span className="text-sm text-slate-500 mt-1">/ 100</span>
+                        </div>
+                    </div>
+                    {showLabel && (
+                        <div className="mt-4 text-center">
+                            <span className={`text-lg font-semibold ${getScoreColor(score)}`}>{getScoreLabel(score)}</span>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // Score Breakdown Component
+        function ScoreBreakdown({ keywordScore, formattingScore, impactScore, completenessScore }) {
+            const scores = [
+                { icon: 'Target', label: 'Keyword Match', score: keywordScore, desc: 'Industry-specific keywords and skills alignment' },
+                { icon: 'Layout', label: 'Formatting', score: formattingScore, desc: 'ATS-friendly structure and readability' },
+                { icon: 'TrendingUp', label: 'Measurable Impact', score: impactScore, desc: 'Quantified achievements and results' },
+                { icon: 'CheckCircle', label: 'Completeness', score: completenessScore, desc: 'Required sections and information coverage' },
+            ];
+
+            return (
+                <div className="space-y-6">
+                    {scores.map(item => (
+                        <div key={item.label} className="space-y-2">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <div className={`p-1.5 rounded-md ${getScoreBgColor(item.score)} bg-opacity-10`}>
+                                        <Icon name={item.icon} className={`w-4 h-4 ${getScoreColor(item.score)}`} />
+                                    </div>
+                                    <span className="font-medium text-slate-700">{item.label}</span>
+                                </div>
+                                <span className={`font-bold ${getScoreColor(item.score)}`}>{item.score}%</span>
+                            </div>
+                            <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
+                                <div className={`h-full ${getScoreBgColor(item.score)} transition-all duration-500`} style={{ width: `${item.score}%` }} />
+                            </div>
+                            <p className="text-xs text-slate-500">{item.desc}</p>
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+
+        // File Upload Component
+        function FileUpload() {
+            const { uploadResume, uploadState, isAnalyzing } = useResume();
+            const [selectedFile, setSelectedFile] = useState(null);
+            const [isDragActive, setIsDragActive] = useState(false);
+
+            const handleDrop = (e) => {
+                e.preventDefault();
+                setIsDragActive(false);
+                const files = e.dataTransfer.files;
+                if (files.length > 0 && files[0].name.endsWith('.pdf')) {
+                    setSelectedFile(files[0]);
+                }
+            };
+
+            const handleFileSelect = (e) => {
+                const file = e.target.files[0];
+                if (file && file.name.endsWith('.pdf')) {
+                    setSelectedFile(file);
+                }
+            };
+
+            const handleUpload = async () => {
+                if (selectedFile) {
+                    await uploadResume(selectedFile);
+                    setSelectedFile(null);
+                }
+            };
+
+            return (
+                <div className="space-y-4">
+                    <div 
+                        onDrop={handleDrop}
+                        onDragOver={(e) => { e.preventDefault(); setIsDragActive(true); }}
+                        onDragLeave={() => setIsDragActive(false)}
+                        className={`border-2 border-dashed rounded-xl p-8 transition-all cursor-pointer ${
+                            isDragActive ? 'border-blue-500 bg-blue-50' : 'border-slate-300 hover:border-slate-400 hover:bg-slate-50'
+                        } ${(uploadState.isUploading || isAnalyzing) && 'opacity-50 cursor-not-allowed'}`}
+                    >
+                        <input type="file" accept=".pdf" onChange={handleFileSelect} className="hidden" id="file-input" />
+                        <label htmlFor="file-input" className="flex flex-col items-center justify-center text-center space-y-4 cursor-pointer">
+                            <div className="p-4 bg-blue-100 rounded-full">
+                                <Icon name="Upload" className="w-8 h-8 text-blue-600" />
+                            </div>
+                            <div>
+                                <p className="text-lg font-medium text-slate-700">
+                                    {isDragActive ? 'Drop your resume here' : 'Drag & drop your resume here'}
+                                </p>
+                                <p className="text-sm text-slate-500 mt-1">or click to browse files</p>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-slate-400">
+                                <span className="px-2 py-1 bg-slate-100 rounded">PDF</span>
+                                <span>Max 10MB</span>
+                            </div>
+                        </label>
+                    </div>
+
+                    {selectedFile && !uploadState.isUploading && !isAnalyzing && (
+                        <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-white rounded-lg shadow-sm">
+                                        <Icon name="File" className="w-5 h-5 text-blue-600" />
+                                    </div>
+                                    <div>
+                                        <p className="font-medium text-slate-700">{selectedFile.name}</p>
+                                        <p className="text-sm text-slate-500">{(selectedFile.size / 1024).toFixed(1)} KB</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button onClick={() => setSelectedFile(null)} className="p-2 text-slate-400 hover:text-rose-500">
+                                        <Icon name="X" className="w-4 h-4" />
+                                    </button>
+                                    <button onClick={handleUpload} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                                        Analyze Resume
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {uploadState.isUploading && (
+                        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm font-medium text-blue-700">Uploading...</span>
+                                <span className="text-sm text-blue-600">{uploadState.progress}%</span>
+                            </div>
+                            <div className="h-2 bg-blue-200 rounded-full overflow-hidden">
+                                <div className="h-full bg-blue-600 transition-all" style={{ width: `${uploadState.progress}%` }} />
+                            </div>
+                        </div>
+                    )}
+
+                    {isAnalyzing && (
+                        <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                            <div className="flex items-center gap-3">
+                                <Icon name="Loader2" className="w-5 h-5 text-amber-600" />
+                                <div>
+                                    <p className="font-medium text-amber-700">Analyzing your resume...</p>
+                                    <p className="text-sm text-amber-600">Our AI is evaluating keywords, formatting, impact, and completeness</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // Analysis Results Component
+        function AnalysisResults({ analysis }) {
+            const [activeTab, setActiveTab] = useState('keywords');
+
+            const tabs = [
+                { id: 'keywords', label: 'Keywords', icon: 'Target' },
+                { id: 'formatting', label: 'Formatting', icon: 'Layout' },
+                { id: 'impact', label: 'Impact', icon: 'TrendingUp' },
+                { id: 'completeness', label: 'Complete', icon: 'CheckCircle' },
+            ];
+
+            return (
+                <div className="space-y-4">
+                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                        <h3 className="font-semibold text-blue-800 mb-2">Overall Feedback</h3>
+                        <p className="text-sm text-blue-700">{analysis.overall_feedback}</p>
+                    </div>
+
+                    <div className="border rounded-lg">
+                        <div className="grid grid-cols-4 border-b">
+                            {tabs.map(tab => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id)}
+                                    className={`flex items-center justify-center gap-1 py-3 text-xs font-medium transition-colors ${
+                                        activeTab === tab.id ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-slate-600 hover:bg-slate-50'
+                                    }`}
+                                >
+                                    <Icon name={tab.icon} className="w-3 h-3" />
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="p-4 max-h-96 overflow-y-auto">
+                            {activeTab === 'keywords' && (
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <h4 className="text-sm font-semibold text-emerald-600 mb-2 flex items-center gap-2">
+                                                <Icon name="Check" className="w-4 h-4" />
+                                                Matched ({analysis.keyword_analysis.matched_keywords.length})
+                                            </h4>
+                                            <div className="flex flex-wrap gap-2">
+                                                {analysis.keyword_analysis.matched_keywords.map(kw => (
+                                                    <span key={kw} className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs rounded">{kw}</span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <h4 className="text-sm font-semibold text-rose-600 mb-2 flex items-center gap-2">
+                                                <Icon name="Target" className="w-4 h-4" />
+                                                Missing ({analysis.keyword_analysis.missing_keywords.length})
+                                            </h4>
+                                            <div className="flex flex-wrap gap-2">
+                                                {analysis.keyword_analysis.missing_keywords.map(kw => (
+                                                    <span key={kw} className="px-2 py-1 bg-rose-100 text-rose-700 text-xs rounded">{kw}</span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                                            <Icon name="Lightbulb" className="w-4 h-4 text-amber-500" />
+                                            Suggestions
+                                        </h4>
+                                        <ul className="space-y-2">
+                                            {analysis.keyword_analysis.suggestions.map((s, i) => (
+                                                <li key={i} className="text-sm text-slate-600 p-2 bg-slate-50 rounded">{s}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'formatting' && (
+                                <div className="space-y-4">
+                                    {analysis.formatting_analysis.issues.length > 0 && (
+                                        <div>
+                                            <h4 className="text-sm font-semibold text-rose-600 mb-2">Issues Found</h4>
+                                            <ul className="space-y-2">
+                                                {analysis.formatting_analysis.issues.map((issue, i) => (
+                                                    <li key={i} className="flex items-center gap-2 text-sm text-slate-600 p-2 bg-rose-50 rounded">
+                                                        <span className="w-1.5 h-1.5 bg-rose-500 rounded-full" />
+                                                        {issue}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                    <div>
+                                        <h4 className="text-sm font-semibold text-slate-700 mb-2">Suggestions</h4>
+                                        <ul className="space-y-2">
+                                            {analysis.formatting_analysis.suggestions.map((s, i) => (
+                                                <li key={i} className="text-sm text-slate-600 p-2 bg-slate-50 rounded">{s}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'impact' && (
+                                <div className="space-y-4">
+                                    <div>
+                                        <h4 className="text-sm font-semibold text-emerald-600 mb-2">Quantified Results</h4>
+                                        <ul className="space-y-2">
+                                            {analysis.impact_analysis.quantified_results.map((r, i) => (
+                                                <li key={i} className="flex items-center gap-2 text-sm text-slate-600 p-2 bg-emerald-50 rounded">
+                                                    <Icon name="TrendingUp" className="w-4 h-4 text-emerald-500" />
+                                                    {r}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm font-semibold text-amber-600 mb-2">Missing Metrics</h4>
+                                        <div className="flex flex-wrap gap-2">
+                                            {analysis.impact_analysis.missing_metrics.map(m => (
+                                                <span key={m} className="px-2 py-1 bg-amber-100 text-amber-700 text-xs rounded">{m}</span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'completeness' && (
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <h4 className="text-sm font-semibold text-emerald-600 mb-2">Present Sections</h4>
+                                            <ul className="space-y-1">
+                                                {analysis.completeness_analysis.present_sections.map(s => (
+                                                    <li key={s} className="flex items-center gap-2 text-sm text-slate-600">
+                                                        <Icon name="Check" className="w-4 h-4 text-emerald-500" />
+                                                        {s}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                        <div>
+                                            <h4 className="text-sm font-semibold text-rose-600 mb-2">Missing Sections</h4>
+                                            <ul className="space-y-1">
+                                                {analysis.completeness_analysis.missing_sections.map(s => (
+                                                    <li key={s} className="flex items-center gap-2 text-sm text-slate-600">
+                                                        <span className="w-1.5 h-1.5 bg-rose-500 rounded-full" />
+                                                        {s}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                        <h3 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
+                            <Icon name="Lightbulb" className="w-4 h-4 text-amber-500" />
+                            4-Week Improvement Plan
+                        </h3>
+                        <ul className="space-y-2">
+                            {analysis.improvement_plan.map((plan, i) => (
+                                <li key={i} className="flex items-start gap-3 text-sm text-slate-600">
+                                    <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-medium">
+                                        {i + 1}
+                                    </span>
+                                    {plan}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                </div>
+            );
+        }
+
+        // Resume History Component
+        function ResumeHistory({ onSelect }) {
+            const { resumes, deleteResume, currentResume } = useResume();
+            const [deleteId, setDeleteId] = useState(null);
+
+            const sortedResumes = [...resumes].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            const bestScore = Math.max(...resumes.map(r => r.ats_score), 0);
+            const averageScore = resumes.length ? Math.round(resumes.reduce((sum, r) => sum + r.ats_score, 0) / resumes.length) : 0;
+
+            return (
+                <div className="space-y-6">
+                    <div className="grid grid-cols-3 gap-4">
+                        <div className="bg-white p-4 rounded-lg shadow-sm border">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm text-slate-500">Total Resumes</p>
+                                    <p className="text-2xl font-bold">{resumes.length}</p>
+                                </div>
+                                <div className="p-3 bg-blue-100 rounded-lg">
+                                    <Icon name="FileText" className="w-5 h-5 text-blue-600" />
+                                </div>
+                            </div>
+                        </div>
+                        <div className="bg-white p-4 rounded-lg shadow-sm border">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm text-slate-500">Best Score</p>
+                                    <p className={`text-2xl font-bold ${getScoreColor(bestScore)}`}>{bestScore}</p>
+                                </div>
+                                <div className="p-3 bg-emerald-100 rounded-lg">
+                                    <Icon name="Award" className="w-5 h-5 text-emerald-600" />
+                                </div>
+                            </div>
+                        </div>
+                        <div className="bg-white p-4 rounded-lg shadow-sm border">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm text-slate-500">Average Score</p>
+                                    <p className={`text-2xl font-bold ${getScoreColor(averageScore)}`}>{averageScore}</p>
+                                </div>
+                                <div className="p-3 bg-amber-100 rounded-lg">
+                                    <Icon name="TrendingUp" className="w-5 h-5 text-amber-600" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-lg shadow-sm border">
+                        <div className="p-4 border-b">
+                            <h3 className="text-sm font-medium text-slate-700">Resume History</h3>
+                        </div>
+                        <div className="p-4 max-h-80 overflow-y-auto">
+                            <div className="space-y-3">
+                                {sortedResumes.map(resume => (
+                                    <div key={resume.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-white rounded-lg shadow-sm">
+                                                <Icon name="FileText" className="w-4 h-4 text-blue-600" />
+                                            </div>
+                                            <div>
+                                                <p className="font-medium text-slate-700 text-sm">{resume.filename}</p>
+                                                <div className="flex items-center gap-2 text-xs text-slate-500">
+                                                    <Icon name="Calendar" className="w-3 h-3" />
+                                                    {formatDate(resume.created_at)}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`px-2 py-1 text-white text-sm font-medium rounded ${getScoreBgColor(resume.ats_score)}`}>
+                                                {resume.ats_score}
+                                            </span>
+                                            <button onClick={() => onSelect(resume)} className="p-2 hover:bg-slate-200 rounded">
+                                                <Icon name="Eye" className="w-4 h-4 text-slate-500" />
+                                            </button>
+                                            <button onClick={() => setDeleteId(resume.id)} className="p-2 hover:bg-slate-200 rounded">
+                                                <Icon name="Trash2" className="w-4 h-4 text-rose-500" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                                {resumes.length === 0 && (
+                                    <div className="text-center py-8 text-slate-500">
+                                        <Icon name="FileText" className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                                        <p>No resumes uploaded yet</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {deleteId && (
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                                <h3 className="text-lg font-semibold mb-2">Delete Resume</h3>
+                                <p className="text-slate-600 mb-4">Are you sure you want to delete this resume? This action cannot be undone.</p>
+                                <div className="flex justify-end gap-2">
+                                    <button onClick={() => setDeleteId(null)} className="px-4 py-2 border rounded-lg hover:bg-slate-50">Cancel</button>
+                                    <button onClick={() => { deleteResume(deleteId); setDeleteId(null); }} className="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700">Delete</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // Navbar Component
+        function Navbar() {
+            const { user, isAuthenticated, login, logout } = useAuth();
+            const [showDropdown, setShowDropdown] = useState(false);
+
+            return (
+                <nav className="border-b bg-white sticky top-0 z-50">
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                        <div className="flex items-center justify-between h-16">
+                            <div className="flex items-center gap-2">
+                                <div className="p-2 bg-blue-600 rounded-lg">
+                                    <Icon name="FileText" className="w-5 h-5 text-white" />
+                                </div>
+                                <span className="text-xl font-bold text-slate-800">ResumeAI</span>
+                            </div>
+
+                            <div className="flex items-center gap-4">
+                                {isAuthenticated ? (
+                                    <div className="relative">
+                                        <button onClick={() => setShowDropdown(!showDropdown)} className="flex items-center gap-2 hover:bg-slate-100 rounded-lg p-2">
+                                            <img src={user?.avatar_url} alt="" className="w-8 h-8 rounded-full bg-blue-100" />
+                                            <span className="hidden sm:inline text-sm font-medium">{user?.name}</span>
+                                            <Icon name="ChevronDown" className="w-4 h-4 text-slate-400" />
+                                        </button>
+                                        {showDropdown && (
+                                            <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border py-2">
+                                                <div className="px-4 py-2 border-b">
+                                                    <p className="text-sm font-medium">{user?.name}</p>
+                                                    <p className="text-xs text-slate-500">{user?.email}</p>
+                                                </div>
+                                                <button onClick={() => { logout(); setShowDropdown(false); }} className="w-full px-4 py-2 text-left text-sm text-rose-600 hover:bg-slate-50 flex items-center gap-2">
+                                                    <Icon name="LogOut" className="w-4 h-4" />
+                                                    Logout
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <button onClick={login} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
+                                        <Icon name="User" className="w-4 h-4" />
+                                        Sign In
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </nav>
+            );
+        }
+
+        // Hero Section
+        function HeroSection({ onGetStarted }) {
+            return (
+                <section className="relative overflow-hidden bg-gradient-to-b from-slate-50 to-white py-20 lg:py-32">
+                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]" />
+                    <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                        <div className="text-center max-w-3xl mx-auto">
+                            <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-full text-sm font-medium mb-6">
+                                <Icon name="Sparkles" className="w-4 h-4" />
+                                AI-Powered Resume Analysis
+                            </div>
+                            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-slate-900 mb-6 leading-tight">
+                                Get Your Resume Past <span className="text-blue-600">ATS Systems</span>
+                            </h1>
+                            <p className="text-lg sm:text-xl text-slate-600 mb-8 leading-relaxed">
+                                Our AI analyzes your resume for keywords, formatting, measurable impact, and completeness. 
+                                Get actionable feedback to increase your interview chances.
+                            </p>
+                            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
+                                <button onClick={onGetStarted} className="px-8 py-3 bg-blue-600 text-white text-lg rounded-lg hover:bg-blue-700 flex items-center gap-2">
+                                    Analyze My Resume
+                                    <Icon name="ArrowRight" className="w-5 h-5" />
+                                </button>
+                                <button className="px-8 py-3 border text-lg rounded-lg hover:bg-slate-50">View Demo</button>
+                            </div>
+                            <div className="flex flex-wrap items-center justify-center gap-8 text-sm text-slate-500">
+                                <div className="flex items-center gap-2">
+                                    <Icon name="Shield" className="w-5 h-5 text-emerald-500" />
+                                    <span>Bank-level Security</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Icon name="Zap" className="w-5 h-5 text-amber-500" />
+                                    <span>Instant Results</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Icon name="Sparkles" className="w-5 h-5 text-purple-500" />
+                                    <span>AI-Powered Insights</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-8">
+                            <div className="bg-white p-6 rounded-xl shadow-sm border">
+                                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
+                                    <span className="text-2xl font-bold text-blue-600">30%</span>
+                                </div>
+                                <h3 className="font-semibold text-slate-800 mb-2">Keyword Weight</h3>
+                                <p className="text-sm text-slate-600">Industry-specific keywords are crucial for ATS compatibility</p>
+                            </div>
+                            <div className="bg-white p-6 rounded-xl shadow-sm border">
+                                <div className="w-12 h-12 bg-emerald-100 rounded-lg flex items-center justify-center mb-4">
+                                    <span className="text-2xl font-bold text-emerald-600">25%</span>
+                                </div>
+                                <h3 className="font-semibold text-slate-800 mb-2">Formatting</h3>
+                                <p className="text-sm text-slate-600">Clean, ATS-friendly structure ensures proper parsing</p>
+                            </div>
+                            <div className="bg-white p-6 rounded-xl shadow-sm border">
+                                <div className="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center mb-4">
+                                    <span className="text-2xl font-bold text-amber-600">25%</span>
+                                </div>
+                                <h3 className="font-semibold text-slate-800 mb-2">Impact Score</h3>
+                                <p className="text-sm text-slate-600">Quantified achievements demonstrate your value</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            );
+        }
+
+        // Results Section
+        function ResultsSection({ onBack }) {
+            const { currentResume } = useResume();
+            const [activeTab, setActiveTab] = useState('overview');
+
+            if (!currentResume) return null;
+
+            const tabs = [
+                { id: 'overview', label: 'Overview', icon: 'FileSearch' },
+                { id: 'detailed', label: 'Detailed Analysis', icon: 'Layout' },
+                { id: 'history', label: 'History', icon: 'History' },
+            ];
+
+            return (
+                <section className="py-12 bg-slate-50">
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                        <div className="flex items-center justify-between mb-8">
+                            <div>
+                                <h2 className="text-2xl font-bold text-slate-800">Analysis Results</h2>
+                                <p className="text-slate-600">
+                                    {currentResume.filename} • Analyzed on {formatDate(currentResume.created_at)}
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button onClick={onBack} className="px-4 py-2 border rounded-lg hover:bg-slate-50 flex items-center gap-2">
+                                    <Icon name="History" className="w-4 h-4" />
+                                    View History
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="mb-6">
+                            <div className="flex border-b">
+                                {tabs.map(tab => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => setActiveTab(tab.id)}
+                                        className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
+                                            activeTab === tab.id ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-600 hover:text-slate-800'
+                                        }`}
+                                    >
+                                        <Icon name={tab.icon} className="w-4 h-4" />
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {activeTab === 'overview' && (
+                            <div className="space-y-6">
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                    <div className="bg-white rounded-lg shadow-sm border p-6">
+                                        <h3 className="text-lg font-semibold mb-4">Overall Score</h3>
+                                        <div className="flex justify-center py-6">
+                                            <ScoreGauge score={currentResume.ats_score} size={220} />
+                                        </div>
+                                    </div>
+                                    <div className="bg-white rounded-lg shadow-sm border p-6 lg:col-span-2">
+                                        <h3 className="text-lg font-semibold mb-4">Score Breakdown</h3>
+                                        <ScoreBreakdown
+                                            keywordScore={currentResume.keyword_score}
+                                            formattingScore={currentResume.formatting_score}
+                                            impactScore={currentResume.impact_score}
+                                            completenessScore={currentResume.completeness_score}
+                                        />
+                                    </div>
+                                </div>
+                                <div className="bg-white rounded-lg shadow-sm border p-6">
+                                    <h3 className="text-lg font-semibold mb-4">AI Recommendations</h3>
+                                    <AnalysisResults analysis={currentResume.analysis_result} />
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'detailed' && (
+                            <div className="bg-white rounded-lg shadow-sm border p-6">
+                                <AnalysisResults analysis={currentResume.analysis_result} />
+                            </div>
+                        )}
+
+                        {activeTab === 'history' && (
+                            <ResumeHistory onSelect={() => {}} />
+                        )}
+                    </div>
+                </section>
+            );
+        }
+
+        // Dashboard Section
+        function DashboardSection({ onUploadNew, onSelectResume }) {
+            const { user } = useAuth();
+            const { resumes, currentResume } = useResume();
+
+            const bestScore = Math.max(...resumes.map(r => r.ats_score), 0);
+            const latestScore = currentResume?.ats_score || 0;
+
+            return (
+                <section className="py-12 bg-slate-50 min-h-screen">
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                        <div className="mb-8">
+                            <h1 className="text-3xl font-bold text-slate-800">Welcome back, {user?.name?.split(' ')[0]}</h1>
+                            <p className="text-slate-600 mt-1">Manage your resumes and track your improvement over time.</p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                            <div className="bg-white p-6 rounded-lg shadow-sm border">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-sm text-slate-500">Total Resumes</p>
+                                        <p className="text-3xl font-bold">{resumes.length}</p>
+                                    </div>
+                                    <div className="p-3 bg-blue-100 rounded-lg">
+                                        <Icon name="FileText" className="w-6 h-6 text-blue-600" />
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-white p-6 rounded-lg shadow-sm border">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-sm text-slate-500">Best Score</p>
+                                        <p className={`text-3xl font-bold ${getScoreColor(bestScore)}`}>{bestScore}</p>
+                                    </div>
+                                    <div className="p-3 bg-emerald-100 rounded-lg">
+                                        <Icon name="Award" className="w-6 h-6 text-emerald-600" />
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-white p-6 rounded-lg shadow-sm border">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-sm text-slate-500">Latest Score</p>
+                                        <p className={`text-3xl font-bold ${getScoreColor(latestScore)}`}>{latestScore}</p>
+                                    </div>
+                                    <div className="p-3 bg-blue-100 rounded-lg">
+                                        <Icon name="TrendingUp" className="w-6 h-6 text-blue-600" />
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-blue-600 rounded-lg shadow-sm border border-blue-600">
+                                <div className="p-6 flex flex-col items-center justify-center h-full">
+                                    <button onClick={onUploadNew} className="w-full px-4 py-2 bg-white text-blue-600 rounded-lg hover:bg-slate-100 flex items-center justify-center gap-2">
+                                        <Icon name="Upload" className="w-4 h-4" />
+                                        Upload New
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                            <div className="lg:col-span-2">
+                                <div className="bg-white rounded-lg shadow-sm border h-full">
+                                    <div className="p-4 border-b">
+                                        <h3 className="font-semibold">Resume History</h3>
+                                        <p className="text-sm text-slate-500">View all your uploaded resumes and their scores</p>
+                                    </div>
+                                    <div className="p-4">
+                                        <ResumeHistory onSelect={onSelectResume} />
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <div className="bg-white rounded-lg shadow-sm border h-full">
+                                    <div className="p-4 border-b">
+                                        <h3 className="font-semibold">Quick Tips</h3>
+                                        <p className="text-sm text-slate-500">Improve your resume with these recommendations</p>
+                                    </div>
+                                    <div className="p-4 space-y-4">
+                                        <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-200">
+                                            <h4 className="font-medium text-emerald-800 mb-2">Use Keywords</h4>
+                                            <p className="text-sm text-emerald-700">Include industry-specific keywords from the job description to improve ATS matching.</p>
+                                        </div>
+                                        <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                                            <h4 className="font-medium text-blue-800 mb-2">Quantify Results</h4>
+                                            <p className="text-sm text-blue-700">Use numbers and percentages to demonstrate your impact.</p>
+                                        </div>
+                                        <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
+                                            <h4 className="font-medium text-amber-800 mb-2">Keep It Simple</h4>
+                                            <p className="text-sm text-amber-700">Use standard section headers and avoid tables, images, or complex formatting.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            );
+        }
+
+        // Main App
+        function App() {
+            const [view, setView] = useState('landing');
+            const { currentResume, isAnalyzing } = useResume();
+
+            return (
+                <div className="min-h-screen bg-slate-50">
+                    <Navbar />
+                    
+                    {view === 'landing' && <HeroSection onGetStarted={() => setView('upload')} />}
+                    
+                    {view === 'upload' && (
+                        <>
+                            <section className="py-20 bg-white">
+                                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                                    <div className="max-w-3xl mx-auto">
+                                        <div className="text-center mb-10">
+                                            <h2 className="text-3xl font-bold text-slate-800 mb-3">Upload Your Resume</h2>
+                                            <p className="text-slate-600">Our AI will analyze your resume and provide detailed feedback in seconds.</p>
+                                        </div>
+                                        <div className="bg-white rounded-lg shadow-sm border">
+                                            <div className="p-6">
+                                                <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                                                    <Icon name="Upload" className="w-5 h-5 text-blue-600" />
+                                                    Select Your Resume
+                                                </h3>
+                                                <p className="text-sm text-slate-500 mb-4">Supported format: PDF (max 10MB)</p>
+                                                <FileUpload />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+                            {currentResume && !isAnalyzing && (
+                                <ResultsSection onBack={() => setView('dashboard')} />
+                            )}
+                        </>
+                    )}
+                    
+                    {view === 'results' && currentResume && (
+                        <ResultsSection onBack={() => setView('dashboard')} />
+                    )}
+                    
+                    {view === 'dashboard' && (
+                        <DashboardSection 
+                            onUploadNew={() => setView('upload')} 
+                            onSelectResume={(resume) => setView('results')} 
+                        />
+                    )}
+                </div>
+            );
+        }
+
+        // Root Render
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(
+            <AuthProvider>
+                <ResumeProvider>
+                    <App />
+                </ResumeProvider>
+            </AuthProvider>
+        );
+    </script>
+</body>
+</html>
